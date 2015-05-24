@@ -1,0 +1,61 @@
+---
+title: "Practical Machine Learning Writeup"
+author: "rlouvet"
+date: "Saturday, May 23, 2015"
+output: html_document
+---
+
+# Executive summary
+This report is an analysis of machine learning prediction accuracy on the human activity recognition dataset (available at: http://groupware.les.inf.puc-rio.br/har). After an initial insight in the dataset we perform preprocessing to clean and select relevant features. Then we train and study the accuracy of a random forest model on test dataset.
+
+# Data pre processing
+
+```{r, cache=TRUE}
+set.seed(12345) #Make this study reproducible
+data = read.csv("pml-training.csv")
+finalTestData = read.csv("pml-testing.csv")
+```
+
+First of all data needs cleaning. A lot of columns only contains NA values. We decide to drop columns that contains more than 10 percent NA values.
+
+```{r, cache=TRUE}
+colSelect = colSums(is.na(data))/nrow(data)<0.1
+dataSub = data[,colSelect]
+finalTestDataSub = finalTestData[,colSelect]
+```
+
+Data includes a high number of features both numeric and level type. We need to perform a feature selection. Principal component analysis implementation of the caret package is used to select a limited set of features. At first, the objective was to capture 90 percent of the variance but this lead to a subset of 90 features which was implied a non reasonable fitting computation time for the machine used. Last choice was to select a subset of 20 features. 
+
+```{r, cache=TRUE}
+# First we need to work on numerical features
+isNumericIndex = sapply(dataSub, is.numeric)
+dataNumeric = dataSub[,isNumericIndex]
+finalTestDataNumeric = finalTestDataSub[,isNumericIndex]
+
+library(caret)
+preProc = preProcess(dataNumeric, method = "pca", pcaComp = 20)
+dataPC = predict(preProc, dataNumeric)
+finalTestDataPC = predict(preProc, finalTestDataNumeric)
+dataNew = data.frame(dataPC, classe = as.factor(data$classe))
+finalTestDataNew = finalTestDataPC
+```
+
+
+#Training the model
+We will try to fit random forest model. The training will be done using a 10-fold cross validation on a training data set extracted from the "pml-training.csv" file.
+
+```{r, cache=TRUE}
+inTrain = createDataPartition(y = dataNew$classe, p=0.75, list = FALSE)
+training = dataNew[inTrain,]
+testing = dataNew[-inTrain,]
+
+ctrl <- trainControl(method = "cv", number =10) 
+rfFit = train(classe~., data = training, method = "rf", trControl = ctrl)
+
+rfPredictions = predict(rfFit, newdata = testing)
+rfConfusion = confusionMatrix(rfPredictions, testing$classe)
+rfConfusion
+```
+
+#Conclusions
+Results are good and the model doesn't seem to overfit the training data.
